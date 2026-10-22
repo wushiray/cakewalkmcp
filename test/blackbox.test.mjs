@@ -23,14 +23,28 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ENTRY = join(ROOT, 'bin', 'cakewalk-mcp.js');
 
+// Exercise the real layout parser through MCP without requiring installed plugins.
+// Only the server child receives this private profile; the user profile is untouched.
+const fixtureProfile = mkdtempSync(join(tmpdir(), 'cakewalk-blackbox-profile-'));
+const fixtureLayout = join(fixtureProfile, 'Cakewalk', 'Sonar', 'Plug-in Menu Layouts');
+const fixtureName = 'CakewalkMcpFixtureEffect';
+mkdirSync(fixtureLayout, { recursive: true });
+writeFileSync(join(fixtureLayout, 'defaultCat.pgl.tmp'),
+  '<Folder Name="Fixture"><Plugin ID="1" CLSID="{F9819B83-B45D-43C0-A62E-D6DA45A0BA32}" '
+  + `Category="0" Name="${fixtureName}" OriginalName="${fixtureName}" /></Folder>`);
+
 /** One long-lived server for the whole file, spoken to like a real client. */
 class Client {
   constructor() {
-    this.child = spawn('node', [ENTRY], { stdio: ['pipe', 'pipe', 'pipe'], cwd: ROOT });
+    this.child = spawn('node', [ENTRY], {
+      stdio: ['pipe', 'pipe', 'pipe'], cwd: ROOT,
+      env: { ...process.env, APPDATA: fixtureProfile },
+    });
     this.buf = '';
     this.pending = new Map();
     this.stderr = '';
@@ -111,6 +125,8 @@ test.after(async () => {
   // suite fail for an inherited reason — see the same hook in integration.test.mjs.
   try { await client.call('cw_close_overlays'); } catch (_) { /* best effort */ }
   client.close();
+  // mkdtempSync created this exact directory; cleanup cannot target the real profile.
+  rmSync(fixtureProfile, { recursive: true, force: true });
 });
 
 // Tools that are slow by design, with the ceiling their own documentation implies.
@@ -353,23 +369,24 @@ test('cw_plugins answers regardless of SONAR and reports three sources', async (
 });
 
 test('cw_find_plugin returns a list for a hit and an empty list for a miss', async () => {
-  const hit = await client.call('cw_find_plugin', { query: 'e' });
+  const hit = await client.call('cw_find_plugin', { query: fixtureName });
   assert.ok(!hit.isError);
-  assert.ok(JSON.parse(hit.text).results.length > 0);
+  assert.deepEqual(JSON.parse(hit.text).results.map(p => p.name), [fixtureName]);
 
   const miss = await client.call('cw_find_plugin', { query: 'zzz-no-such-plugin-zzz' });
   assert.ok(!miss.isError, 'a miss is a normal result, not an error');
   assert.deepEqual(JSON.parse(miss.text).results, []);
 });
 
-test('every plugin result carries a format and a presence flag', async () => {
-  const r = await client.call('cw_find_plugin', { query: 'EZ', limit: 20 });
+test('layout-only plugin results report format, source and unknown presence', async () => {
+  const r = await client.call('cw_find_plugin', { query: fixtureName, limit: 20 });
+  assert.ok(!r.isError);
   const results = JSON.parse(r.text).results;
-  assert.ok(results.length > 0);
-  for (const p of results) {
-    assert.ok(p.name, 'a result needs a name');
-    assert.equal(typeof p.present, 'boolean', `${p.name} needs a presence flag`);
-  }
+  assert.equal(results.length, 1);
+  assert.equal(results[0].name, fixtureName);
+  assert.equal(results[0].format, 'DX');
+  assert.equal(results[0].source, 'menu-layout-only');
+  assert.equal(results[0].present, null);
 });
 
 // --- 5. MIDI file round trip through the protocol -----------------------------
