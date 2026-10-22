@@ -1,0 +1,20 @@
+{
+  "name": "cakewalkmcp",
+  "version": "0.2.0",
+  "description": "MCP server for Cakewalk SONAR using native menu commands, UI automation, CAL and MIDI file workflows, plus real-time MIDI; CakeScript transport is detected but not implemented.",
+  "type": "module",
+  "main": "bin/cakewalk-mcp.js",
+  "bin": { "cakewalk-mcp": "bin/cakewalk-mcp.js" },
+  "files": ["bin", "lib", "bridge", "native", "deploy", "runtime", "vendor", "LICENSE", "QUICKSTART.md", "README.md", "AGENTS.md", "双击部署.cmd"],
+  "scripts": {
+    "start": "node bin/cakewalk-mcp.js",
+    "test": "node run-tests.mjs",
+    "test:full": "node run-tests.mjs --full"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.24.1"
+  },
+  "engines": { "node": ">=18.19.0" },
+  "license": "MIT"
+}

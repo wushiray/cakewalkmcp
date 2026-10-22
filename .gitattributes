@@ -1,0 +1,10 @@
+* text=auto
+*.mjs text eol=lf
+*.js text eol=lf
+*.cjs text eol=lf
+*.c text eol=lf
+*.h text eol=lf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.exe binary
+*.dll binary

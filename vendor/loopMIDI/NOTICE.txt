@@ -1,0 +1,22 @@
+loopMIDI — bundled installer
+============================
+
+File      : loopMIDISetup.exe
+Version   : 1.0.16.27
+Publisher : Tobias Erichsen
+Source    : https://www.tobias-erichsen.de/software/loopmidi.html
+           (loopMIDISetup_1_0_16_27.zip, SHA256
+            975399eb76e2c5a1d553ecd8975ab361261ccab8fd9412b8060b19877cb4e0d5)
+EXE SHA256: 86db060b586b57dbeeaab32412602a9dd7f9e4298ab7586e667b7e7dbcf60ed6
+Signature : Authenticode, signer "Tobias Erichsen", status Valid
+
+Redistribution
+--------------
+Bundled with the permission of the author (confirmed by the project owner,
+who asked him directly). loopMIDI is proprietary freeware, not open source;
+this package only redistributes the unmodified vendor installer so that the
+adapter can be deployed on a machine with no network access.
+
+The installer is the vendor's own. Nothing here modifies it, wraps it, or
+changes its licensing behaviour. Installing it is the same action as running
+the download by hand, and it is only attempted when loopMIDI is absent.
