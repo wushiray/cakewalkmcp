@@ -17,7 +17,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  PROJECT_COMMANDS, projectCommand, saveState, FILE_DIALOG,
+  PROJECT_COMMANDS, projectCommand, saveState, saveStateFromDocument, FILE_DIALOG,
 } from '../lib/project.js';
 import {
   COMMAND_EVIDENCE, COMMAND_KINDS, EVIDENCE, evidenceSummary, runAndClassify,
@@ -92,15 +92,49 @@ test('an unknown project command is refused with the known list', async () => {
   );
 });
 
-test('saveState reports the modified flag rather than guessing', async () => {
+test('saveStateFromDocument never calls an unknown dirty flag safe', () => {
+  const base = {
+    known: true, projectOpen: true, project: 'x.mid', documentKind: 'imported',
+    documentTab: 'x.mid*',
+  };
+  const dirty = saveStateFromDocument({ ...base, modified: true });
+  assert.equal(dirty.modified, true);
+  assert.equal(dirty.safeToClose, false);
+  assert.match(dirty.note, /unsaved/i);
+
+  // Imported MIDI without the tab: SONAR's caption does not carry the marker,
+  // so "unknown" must not be reported as clean or safe.
+  const unknown = saveStateFromDocument({
+    ...base, modified: null, modifiedKnown: false, documentTab: null,
+  });
+  assert.equal(unknown.modified, null);
+  assert.equal(unknown.modifiedKnown, false);
+  assert.equal(unknown.safeToClose, false);
+  assert.match(unknown.note, /unsafe/i);
+
+  const clean = saveStateFromDocument({ ...base, modified: false, documentTab: 'x.mid' });
+  assert.equal(clean.safeToClose, true);
+  assert.equal(clean.modifiedKnown, true);
+
+  const none = saveStateFromDocument({ known: true, projectOpen: false });
+  assert.equal(none.safeToClose, true);
+  assert.equal(none.modified, false);
+});
+
+test('saveState follows the modified flag rather than guessing', async () => {
   const s = await saveState();
   if (!s.known) return;
   if (!s.open) {
     assert.equal(s.safeToClose, true);
     return;
   }
-  assert.equal(typeof s.modified, 'boolean');
-  assert.equal(s.safeToClose, !s.modified, 'safeToClose must follow from modified');
+  if (typeof s.modified === 'boolean') {
+    assert.equal(s.safeToClose, !s.modified, 'safeToClose must follow from modified');
+  } else {
+    assert.equal(s.modified, null);
+    assert.equal(s.modifiedKnown, false);
+    assert.equal(s.safeToClose, false, 'unknown modified must not be safe');
+  }
   assert.ok(s.note);
 });
 

@@ -403,15 +403,15 @@ test('documentState answers rather than hanging, with or without SONAR', async (
   }
 });
 
-test('classifyTitle is a function of the caption alone', async () => {
+test('document classification agrees with the observed caption and document tab', async () => {
   // The pure cases live in parsers.test.mjs. This asserts the live caption
   // classifies identically to a second call, so the pure test and the real
   // title cannot silently diverge.
   const { classifyTitle, documentState } = await import('../lib/track-ui.js');
   const d = await documentState();
   if (!d.known) return;
-  assert.deepEqual(classifyTitle(d.title), d,
-    'classification must be a function of the caption alone');
+  assert.deepEqual(classifyTitle(d.title, d.documentTab), d,
+    'classification must use the same caption and document-tab observation');
 });
 
 test('a real edit reports a dialog it opened, or says why it saw none', async (t) => {

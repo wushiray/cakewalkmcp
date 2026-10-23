@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { parseInventoryKeyNames, parseInventoryRegQuery } from '../lib/plugins.js';
-import { classifyTitle } from '../lib/track-ui.js';
+import { classifyTitle, trackAccessReadiness } from '../lib/track-ui.js';
 import { SAMPLE_INVENTORY_KEYNAMES, SAMPLE_CLSID_QUERY } from './helpers.mjs';
 
 // This suite is deliberately process-free: the liveness check that used to wait
@@ -220,6 +220,52 @@ test('the title classification handles both shapes SONAR produces', () => {
     if (want.project) assert.equal(got.project, want.project, `${title}: project`);
     if (want.modified !== undefined) assert.equal(got.modified, want.modified, `${title}: modified`);
   }
+});
+
+test('the document tab is authoritative for the dirty flag', () => {
+  // Measured on SONAR 2026.10 with an imported MIDI: the frame caption is
+  // "release-host.mid - Cakewalk Sonar" with no asterisk, while the document
+  // tab child window is "release-host.mid*". Reading only the caption reported
+  // modified:false / safeToClose:true for a project with unsaved changes.
+  const dirty = classifyTitle('release-host.mid - Cakewalk Sonar', 'release-host.mid*');
+  assert.equal(dirty.project, 'release-host.mid');
+  assert.equal(dirty.modified, true);
+  assert.equal(dirty.modifiedKnown, true);
+  assert.equal(dirty.documentTab, 'release-host.mid*');
+
+  const clean = classifyTitle('release-host.mid - Cakewalk Sonar', 'release-host.mid');
+  assert.equal(clean.modified, false);
+  assert.equal(clean.modifiedKnown, true);
+
+  // No tab information: an imported document has never been saved as .cwp, so
+  // "unknown" is the only honest answer — never false.
+  const unknown = classifyTitle('release-host.mid - Cakewalk Sonar');
+  assert.equal(unknown.modified, null);
+  assert.equal(unknown.modifiedKnown, false);
+  assert.equal(unknown.documentTab, null);
+
+  // A dirty caption (older shapes) still wins when the tab is unavailable.
+  const captionDirty = classifyTitle('release-host.mid* - Cakewalk Sonar');
+  assert.equal(captionDirty.modified, true);
+  assert.equal(captionDirty.project, 'release-host.mid');
+
+  // For .cwp-shaped captions the tab also wins.
+  const cwp = classifyTitle('Cakewalk Sonar - [song.cwp]', 'song.cwp*');
+  assert.equal(cwp.modified, true);
+});
+
+test('track readiness is false when no strip controls are exposed', () => {
+  const none = trackAccessReadiness([]);
+  assert.equal(none.ready, false);
+  assert.match(none.readyReason, /Free License|unactivated/);
+  const failed = trackAccessReadiness([], 'uia failed');
+  assert.equal(failed.ready, false);
+  assert.equal(failed.visibleError, 'uia failed');
+  const ok = trackAccessReadiness(['音量 on Track 1']);
+  assert.equal(ok.ready, true);
+  assert.equal(ok.readyReason, null);
+  const notArray = trackAccessReadiness(null);
+  assert.equal(notArray.ready, false);
 });
 
 test('the activation-state suffix does not hide an open project', () => {

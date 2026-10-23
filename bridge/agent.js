@@ -111,6 +111,43 @@ function Get-WindowsByPid {
   return $res
 }
 
+# Read the document tab's caption, which is where this SONAR build marks an
+# unsaved project ("release-host.mid*"). The main frame caption does NOT carry
+# the asterisk for an imported MIDI document, so reading only the frame title
+# reported modified:false and safeToClose:true for a dirty project — a data-loss
+# trap for any caller that trusted it. Child windows are cheap to enumerate and
+# the tab is a real Win32 child (class "C"), not a UIA-only element.
+#
+# Returns the matching tab title, preferring the "*" form when both a plain and
+# a dirty child exist, or $null when the frame title has no document name or no
+# child matches.
+function Get-DocumentTab {
+  param([IntPtr] $Frame, [string] $FrameTitle)
+  $doc = $null
+  $m = [regex]::Match($FrameTitle, '^(.*?)\s*-\s*Cakewalk Sonar\b')
+  if ($m.Success) { $doc = $m.Groups[1].Value.Trim() }
+  if (-not $doc) {
+    $m2 = [regex]::Match($FrameTitle, '^.*?\s*-\s*\[(.+?)(\*)?\]\s*$')
+    if ($m2.Success) { $doc = $m2.Groups[1].Value.Trim() }
+  }
+  if (-not $doc) { return $null }
+  $base = $doc -replace '\*$', ''
+  $hits = New-Object System.Collections.Generic.List[string]
+  $cb = [CwBridge+EnumProc]{
+    param($h, $p)
+    $sb = New-Object Text.StringBuilder 512
+    [CwBridge]::GetWindowText($h, $sb, 512) | Out-Null
+    $t = $sb.ToString()
+    if ($t -eq $base -or $t -eq ($base + '*')) { $hits.Add($t) | Out-Null }
+    return $true
+  }
+  [CwBridge]::EnumChildWindows($Frame, $cb, [IntPtr]::Zero) | Out-Null
+  if ($hits.Count -eq 0) { return $null }
+  $dirty = $hits | Where-Object { $_ -eq ($base + '*') } | Select-Object -First 1
+  if ($dirty) { return $dirty }
+  return ($hits | Select-Object -First 1)
+}
+
 # Names of windows that are modal overlays: while one is open SONAR drops
 # WM_COMMAND to the main window, so menu automation must close them first.
 function Get-Overlays {
@@ -241,11 +278,14 @@ function Get-Status {
   foreach ($w in $wins) {
     if ($w.cls -match 'XCD|LLM|Agent|Cake|JUCE|Script') { $interesting += $w }
   }
+  $frame = $wins | Where-Object { $_.hwnd -eq $hMain.ToInt64() } | Select-Object -First 1
+  $frameTitle = if ($frame) { $frame.title } else { $null }
   $info.sonar = [ordered]@{
     found = $true
     hwnd  = $hMain.ToInt64().ToString('X8')
     pid   = $tid
-    title = ($wins | Where-Object { $_.hwnd -eq $hMain.ToInt64() } | Select-Object -First 1).title
+    title = $frameTitle
+    documentTab = Get-DocumentTab $hMain $frameTitle
   }
   $info.windows = $interesting | ForEach-Object { [ordered]@{ hwnd = $_.hwndHex; cls = $_.cls; title = $_.title } }
   # Full visible list, so a caller can diff before/after a menu command and tell
@@ -346,7 +386,15 @@ while ($true) {
         $tid = 0
         [CwBridge]::GetWindowThreadProcessId($h, [ref]$tid) | Out-Null
         $ov = Get-Overlays $tid
+        $closed = @()
+        # Declared outside the branch: when close was not requested these stay
+        # empty, and the response still reports counts of 0 rather than $null.
+        $attempted = @()
         if ($req.close) {
+          # Only windows we actually posted WM_CLOSE to are candidates. A
+          # retained #32770 (closeDialogs not set) was never attempted, so it can
+          # never be reported as closed — that is how a "save your changes?"
+          # prompt used to be counted while still on screen.
           foreach ($o in $ov) {
             # A #32770 is a real Win32 dialog — an Open/Save file picker or, worse,
             # a "save your changes?" prompt. Closing one with WM_CLOSE is a user
@@ -354,10 +402,32 @@ while ($true) {
             # JUCE panels are closed automatically; #32770 needs closeDialogs.
             if ($o.cls -eq '#32770' -and -not $req.closeDialogs) { continue }
             $oh = New-Object IntPtr ([Convert]::ToInt64($o.hwndHex, 16))
+            # PostMessageW only queues the request; it returns whether the message
+            # was dispatched, not whether the window went away. That is why the
+            # outcome is decided by re-enumerating below, never by this result.
             [CwBridge]::PostMessageW($oh, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+            $attempted += $o.hwndHex
+          }
+          # Re-read after the attempts so "overlays" means what remains, not what
+          # was seen before the request, and so "closed" means observed gone: a
+          # handle we posted to must be ABSENT from the fresh list. A panel that
+          # ignored WM_CLOSE (refused), or that is still on screen (retained),
+          # stays in $ov and is therefore not counted.
+          if ($attempted.Count -gt 0) {
+            Start-Sleep -Milliseconds 300
+            $ov = Get-Overlays $tid
+            $still = @()
+            foreach ($o in $ov) { $still += $o.hwndHex }
+            foreach ($a in $attempted) { if ($still -notcontains $a) { $closed += $a } }
           }
         }
-        Emit @{ overlays = @($ov); closed = [bool]$req.close }
+        Emit @{
+          overlays = @($ov)
+          closed = ($closed.Count -gt 0)
+          closedCount = $closed.Count
+          attemptedCount = @($attempted).Count
+          requested = [bool]$req.close
+        }
       }
 
       'quit' { exit 0 }

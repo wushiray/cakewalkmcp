@@ -45,6 +45,14 @@ const SLOW_SUITES = new Set([
   'capability.test.mjs',    // drives the PowerShell bridge
   'deploy-budget-regressions.test.mjs', // spawns Windows PowerShell 5.1 per case
   'deploy-ownership-regressions.test.mjs', // real PowerShell AST fixture, no DAW writes
+  // The four below were observed leaving this process: each spawns a child and
+  // waits on it, so they belong in the full tier even though their names do not
+  // say "integration".
+  'save-safety-regressions.test.mjs',
+  'midi-text-encoding.test.mjs',
+  'template-dialog.test.mjs',
+  'offline-cal-isolation.test.mjs',
+  'rename-readback.test.mjs',
 ]);
 
 const all = readdirSync(dir).filter((f) => f.endsWith('.test.mjs')).sort();

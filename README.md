@@ -1,8 +1,27 @@
 # cakewalkmcp
 
-**0.2.0 release:** start with [QUICKSTART.md](QUICKSTART.md) and the current
+**0.2.1 prerelease:** start with [QUICKSTART.md](QUICKSTART.md) and the current
 [release notes](RELEASE-NOTES.md). The detailed measurements below include
 historical experiments; the release notes take precedence for current limits.
+
+The [2026-10-23 acceptance report](ACCEPTANCE-20261023.md) records actual SONAR
+MIDI import/export, CAL editing, real-time MIDI recording, track writes and WAV
+rendering. A Free License session exposed working track controls after loading
+a CWP, so earlier paid-only explanations below are historical observations, not
+a reliable availability rule. Inspect the current control tree.
+
+For Chinese CP936 SONAR, choose `textEncoding:"gbk"` explicitly when writing or
+reading track names; UTF-8 remains the default. Import a new arrangement into
+an empty CWP or open its MIDI file directly. Import into an existing selected
+track can merge content and override routing/mix. Select all before a whole
+MIDI export. A synth template's created track name may differ from its filename;
+inspect an unverified insert before retrying it.
+
+Upgrade from 0.2.0: its `cw_save_state` can incorrectly call an imported MIDI
+document safe to close. 0.2.1 reads the document tab, keeps positive dirty
+evidence, and refuses close-safety when the state is unknown. This observation
+does not authorize discarding work. Overlay results also distinguish attempted
+closes from panels observed gone; track readiness reflects exposed controls.
 
 Tests are offline by default: `npm test` or `npm run test:full` substitutes the
 DAW/MIDI process boundary with a no-host fixture, while installer fixtures still
@@ -296,7 +315,7 @@ the open **document**:
 
 | | no project open | project open |
 |---|---|---|
-| Window title | `Cakewalk Sonar` | `Cakewalk Sonar - [name.cwp]` (`*` = modified) |
+| Window title | `Cakewalk Sonar` | `Cakewalk Sonar - [name.cwp*]` for a .cwp, or `name.mid - Cakewalk Sonar` for imported MIDI. The `*` dirty marker is drawn on the **document tab**, reported as `documentTab`; the frame caption does not always carry it. |
 | Menu entries | 43 | **270** |
 | Menus present | 文件 编辑 工具 帮助 | + **视图 插入 处理 工程 窗口** |
 | Accessibility elements | 33–37 | **173** |

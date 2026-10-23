@@ -1,6 +1,6 @@
 {
   "name": "cakewalkmcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MCP server for Cakewalk SONAR using native menu commands, UI automation, CAL and MIDI file workflows, plus real-time MIDI; CakeScript transport is detected but not implemented.",
   "type": "module",
   "main": "bin/cakewalk-mcp.js",

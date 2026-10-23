@@ -1,5 +1,19 @@
 # AGENTS.md — 给 AI agent 的操作手册
 
+## 0.2.1 修订
+
+- 升级旧版：0.2.0 的 `cw_save_state` 对导入 MIDI 可能误报可安全关闭，不应依赖旧版的该结论。
+- 文档标签与主标题任一存在脏标记就按未保存处理。缺少或不匹配的标签、未知文档状态均不得推断安全关闭。`safeToClose` 是一次观测，不是关闭授权。
+- `cw_close_overlays` 的 `closedCount` 只统计请求后从剩余列表消失的目标；`attemptedCount` 是尝试数，不能当成功数。`closed:true` 也不表示所有弹窗已关闭，仍须检查 `overlays`。
+- `cw_track_controls` 无可见控件时 `ready:false`。可能是空工程、视图、许可或读取失败；不得仅因返回控件词表就宣称当前能写。
+- **许可不是已证实的充分解释（2026-10-23 实测）。** 免费许可横幅可见时，由空白 CWP 模板创建并导入 MIDI 后照样暴露 `on Track` 控件，且 mute/solo/arm 实际写入 `verified: true` 并经外部 AX 复核；而早前导入 MIDI 的会话则没有子控件。因此"免费许可 → 轨道条不暴露控件 → 必须付费"这类绝对断言不成立：暴露与可写性随会话/工程/视图/工作区变化。以 `cw_track_controls` / `cw_get_track_control` 的实际返回为准，不要由许可推断。
+- **导入 MIDI 要区分目标（2026-10-23 实测）。** 导入到**空 CWP**：6 个音符、通道 2/5、program 32/0、CC7/10 与中文轨道名全部保留。向**当前选中的已有 MIDI 轨**导入则是合并，且已有轨的通道 5 会覆盖输入里的通道 2。要保真就先建空工程再导入；合并语义不要当成"导入失败"。
+- **导出 0xA659 只包含选中内容。** 需要完整往返时，先 `cw_navigate` 的 selectAll 再导出，否则导出文件会缺轨道；读回有缺项时先核对选区，再判断是否发生数据丢失。
+- **中文宿主轨名需显式选择编码。** `cw_read_midi_file` / `cw_write_midi_file` 新增显式 `textEncoding:'gbk'`，UTF-8 仍是默认值；CP936 中文 SONAR 能正确显示 GBK 名称。SMF 本身不携带字符集声明，所以不要笼统说"标准是 UTF-8"；看到乱码时先用 `textEncoding:'gbk'` 重读，而不是断言工程损坏。
+- **音轨模板：请求 ≠ 已验证。** BassRockRhythm 经 MCP 插入到新轨 3 后 `verified: true` 并经外部 AX 复核。但手动 插入菜单 → 音轨模板 对话框仍是必需前置（见下文）；插入后瞬时读取错误不代表插入失败，也**不要自动重试未验证的插入**——先重新读取确认。
+- **CAL 修复（2026-10-23 实测）。** `addNotes` 的缩进问题与 `deleteNotes` 的二进制 `&&` 已修好，真实导出先后验证为 18 个音符、删除后 6 个音符。仍然遵守：`deleteNotes` 必须带 `confirm:"deleteNotes"`，`addNotes` 的 intervals 限于 -127..127。
+- 以下安全约束全部保留：破坏性确认、弹窗默认保留、T1 只检测不实现、surface 默认关闭且 read/dump/call/qi/probe 永久禁用、无工程不发送命令、只有 `verified: true` 才报成功、不盲重试。
+
 ## 0.2.0 发布更新
 
 - `cw_verify_commands` 默认仅探测两个视图命令；无工程时不发送。显式 ID 也受安全清单限制，遇到标准模态框立即停止并保留弹窗。
@@ -55,7 +69,7 @@ cw_set_volume / cw_set_pan / cw_apply_mix → 实时 MIDI 路线（需要轨道�
 1. cw_list_track_templates   → 列出可用模板（可 filter；数量随安装变化，本机 184 个）
 2. cw_insert_track_template  → 插入并按新轨名验证
 ```
-⚠️ 插入前**必须先手动打开** 导入音轨模板 对话框（插入菜单 → 音轨模板）——0x8536 命令派发不可靠，这是已知限制。对话框没开时工具会明确报错而不是乱插。
+⚠️ 插入前**必须先手动打开** 导入音轨模板 对话框（插入菜单 → 音轨模板）——0x8536 命令派发不可靠，这是已知限制。对话框没开时工具会明确报错而不是乱插。已实测 BassRockRhythm 经 MCP 插入到新轨 3：`verified: true` 并经外部 AX 复核；但返回值只代表"已请求 + 新轨名核验通过"，插入后的瞬时读取错误不代表插入失败——先重读确认，**不要自动重试未验证的插入**。
 
 **写音符：**
 ```text
@@ -102,8 +116,13 @@ cw_verify_commands   → SONAR 升级后重测命令 id
 `cw_set_track_name`（走名称栏）、`cw_transport`（走菜单命令 0x801D/0x801F/0x801C，
 但**需要先打开工程**，且没有独立的 pause）。
 
-⚠️ 前四个依赖 SONAR 的许可等级：**未登录或 Free License 时，轨道条不暴露子控件**，
-它们会报 `no element named '手动静音 on Track N'`。写歌/导入导出不受影响。
+⚠️ 前四个依赖轨道条是否**暴露** `on Track N` 子控件；**这不是许可等级的确定函数**。
+实测 2026-10-23：Free License 横幅可见、由空白 CWP 模板创建并导入 MIDI 后子控件照常暴露，mute/solo/arm 写入
+`verified: true` 并经外部 AX 复核；而另一会话（此前导入过 MIDI）却没有子控件。
+暴露与可写性随会话/工程/视图/工作区变化——**以 `cw_track_controls` /
+`cw_get_track_control` 的实际返回为准，不要由许可推断"必须付费才能写"**。
+遇到 `no element named '手动静音 on Track N'` 时，先确认工程已打开、轨道在屏上、
+SONAR 未最小化、并读一次控件词表，再考虑其它原因；写歌/导入导出不依赖这些控件。
 
 ## 写混音参数的正确路径
 

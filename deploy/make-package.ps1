@@ -24,7 +24,7 @@ $Include = @('bin', 'lib', 'bridge', 'deploy', 'native', 'runtime', 'vendor',
              'node_modules', 'package.json', 'package-lock.json', 'LICENSE',
              'QUICKSTART.md', 'README.md', 'AGENTS.md', 'CONNECT-PROMPT.md',
              'RELEASE-NOTES.md', 'THIRD-PARTY-NOTICES.md',
-             'AUDIT-RESPONSE-20261022.md',
+             'AUDIT-RESPONSE-20261022.md', 'ACCEPTANCE-20261023.md',
              '双击部署.cmd')
 
 $staging = Join-Path $env:TEMP ('cw-pkg-' + [Guid]::NewGuid().ToString('n').Substring(0, 8))

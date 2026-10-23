@@ -342,6 +342,20 @@ describe('calHelp', () => {
     assert.match(JSON.stringify(steps), /pause/i, 'dismissing the pause must be a step');
   });
 
+  test('the addNotes prolog declares every int indented — SONAR rejects a bare one', () => {
+    // Real host (SONAR2026.10) observation only: a generated addNotes whose
+    // (int p 0) sat at column 0 immediately after (int n 0) failed with
+    // CAL Error003 "int". Reindenting that one line to two spaces — no variable
+    // renames — made the same script succeed, adding 2 notes to each of 6
+    // source notes. Renaming without fixing the indentation still failed. So
+    // the indentation is what the host parser needed here; retesting on the
+    // actual host remains a separate step from this unit test.
+    const src = addNotesSource({ intervals: [127, -127] });
+    const prolog = src.slice(0, src.indexOf('\n(if'));
+    assert.match(prolog, /\n  \(int p 0\)\n/);
+    assert.doesNotMatch(prolog, /^\(int /m);
+  });
+
   test('it admits what the layer cannot do', () => {
     const h = calHelp();
     assert.ok(h.limits.length >= 3);

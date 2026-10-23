@@ -145,13 +145,75 @@ function Get-SonarPid {
 # controls DO honour AXSetValue and AXPress, unlike SONAR's own drawn controls.
 # That difference is the whole reason a template can be inserted from here.
 function Get-DialogRoot([string]$pattern) {
+    # Where SONAR's modal dialogs actually live.
+    #
+    # The measured case is 导入音轨模板 (Import Track Template). Computer-use
+    # AX output and screenshots both show it as a #32770 dialog OWNED by the
+    # SONAR main window — not as a child of the desktop root. Enumerating only
+    # desktop Children therefore reported "the dialog is not open" while the
+    # dialog was on screen the whole time.
+    #
+    # Two shapes are considered, both restricted to SONAR's own pid:
+    #
+    #   1. a same-pid TOP-LEVEL #32770 dialog, and
+    #   2. a #32770 dialog among the DESCENDANTS of a same-pid top-level
+    #      window, which is where an owned dialog appears.
+    #
+    # The walk never covers the whole desktop: it starts at each known SONAR
+    # root and the pid condition is applied inside that walk. Refused on
+    # purpose, each of these having been seen to match the title without being
+    # the dialog: a window of a foreign PID, a same-pid element whose class is
+    # not #32770, and the mainframe itself.
     $thePid = Get-SonarPid
     $cond = New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::ProcessIdProperty, $thePid)
-    $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
-        [System.Windows.Automation.TreeScope]::Children, $cond)
+
+    # An element can disappear between FindAll and the property read — a dialog
+    # that just closed, a tooltip torn down — and in PowerShell 5.1 that throws
+    # and would abort the caller's poll. Treating a stale element as "not it"
+    # is correct: the poll re-enumerates on the next tick.
+    function Test-DialogCaption($e) {
+        if (-not $e) { return $false }
+        try {
+            if ($e.Current.ControlType.ProgrammaticName -ne 'ControlType.Window') { return $false }
+            if ($e.Current.ClassName -ne '#32770') { return $false }
+            return [bool]($e.Current.Name -match $pattern)
+        } catch [System.Windows.Automation.ElementNotAvailableException] {
+            return $false
+        } catch [System.Runtime.InteropServices.COMException] {
+            return $false
+        }
+    }
+
+    try {
+        $wins = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
+            [System.Windows.Automation.TreeScope]::Children, $cond)
+    } catch [System.Windows.Automation.ElementNotAvailableException] {
+        $wins = $null
+    } catch [System.Runtime.InteropServices.COMException] {
+        $wins = $null
+    }
+    if (-not $wins) { return $null }
+
+    # Pass 1: a same-pid top-level dialog. Everything else same-pid is kept as
+    # a root for pass 2.
+    $roots = @()
     foreach ($w in $wins) {
-        if ($w.Current.Name -match $pattern) { return $w }
+        if (Test-DialogCaption $w) { return $w }
+        $roots += $w
+    }
+
+    # Pass 2: an owned dialog, searched under each same-pid top-level root and
+    # nowhere else.
+    foreach ($r in $roots) {
+        $hits = $null
+        try { $hits = $r.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond) }
+        catch [System.Windows.Automation.ElementNotAvailableException] { continue }
+        catch [System.Runtime.InteropServices.COMException] { continue }
+        if (-not $hits) { continue }
+        foreach ($h in $hits) {
+            if (Test-DialogCaption $h) { return $h }
+        }
     }
     return $null
 }
@@ -368,7 +430,7 @@ try {
                 [ordered]@{
                     ok    = $false
                     error = 'the 导入音轨模板 dialog is not open'
-                    hint  = 'Post command 0x8536 (插入 > 音轨模板) first.'
+                    hint  = 'Open it by hand: 插入 > 音轨模板 (Insert > Track Template), then retry. Do not rely on posting command 0x8536 — it does not reliably open this dialog.'
                 } | ConvertTo-Json -Compress
                 break
             }
@@ -407,7 +469,7 @@ try {
                 [ordered]@{
                     ok      = $false
                     error   = "no element named '$name'"
-                    hint    = 'Only tracks visible in the Track view expose controls; scroll the track into view.'
+                    hint    = 'Only tracks visible in the Track view expose controls; scroll the track into view. If the track is already visible, this session exposes no track controls at all — measured on Free License / unactivated SONAR, whose licence banner is shown above the track view.'
                 } | ConvertTo-Json -Compress
                 break
             }
@@ -518,7 +580,16 @@ try {
             Start-Sleep -Milliseconds 900
 
             $root2 = Get-Root
-            $m2 = Find-Control $root2 "$($LabelEnv['mute']) on Track $Track"
+            # The read-back must re-anchor the row EXACTLY as the lookup above
+            # did: try each mute alias in turn. Interpolating the whole alias
+            # array into one name ("absent-alias Mute on Track 1") matched no
+            # element, so $m2 came back null, $after stayed null, and a rename
+            # that had actually succeeded on screen was reported verified=false.
+            $m2 = $null
+            foreach ($ml in $LabelEnv['mute']) {
+                $m2 = Find-Control $root2 "$ml on Track $Track"
+                if ($m2) { break }
+            }
             $after = $null
             if ($m2) {
                 $rowY2 = [int]$m2.Current.BoundingRectangle.Y
