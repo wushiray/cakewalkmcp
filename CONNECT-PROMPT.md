@@ -1,4 +1,4 @@
-# 视频同款：连接 Cakewalk 的提示词
+# 连接提示词
 
 视频里说的「填一下安装路径，剩下的连接和检查交给 Agent」，用的就是下面这段。
 适用于 **Windows 上的 CakewalkMCP 0.2.1**。先从 [发布页面](https://github.com/wushiray/cakewalkmcp/releases/tag/v0.2.1) 下载 `cakewalkmcp-0.2.1.zip`，完整解压，运行 `双击部署.cmd`，查看安装结果与健康检查。

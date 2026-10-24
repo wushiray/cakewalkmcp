@@ -1,7 +1,7 @@
 # cakewalkmcp
 
 **从介绍视频过来的朋友：** 下载 [0.2.1 便携包](https://github.com/wushiray/cakewalkmcp/releases/tag/v0.2.1)，
-解压并运行 `双击部署.cmd`，然后打开 **[视频同款连接提示词](CONNECT-PROMPT.md)**，
+解压并运行 `双击部署.cmd`，然后打开 **[连接提示词](CONNECT-PROMPT.md)**，
 只填安装路径，复制给支持本地 MCP 的 Agent。里面也有「四小节轻快旋律＋和弦＋低音」、
 转调、力度/时值调整与轨道整理的可复制示例。
 
